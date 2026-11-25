@@ -32,6 +32,7 @@ static volatile uint8_t sourceCapabilitiesReady;
 static volatile uint8_t apiManaged;
 static volatile uint8_t requestPending;
 static volatile uint8_t requestConfigured;
+static volatile uint8_t fallbackRequest; // the request in flight is the 5 V fallback
 static volatile uint8_t requestByVoltage;
 static volatile uint8_t requestedCapability;
 static volatile uint16_t requestedVoltage;
@@ -112,11 +113,31 @@ static void usbpd_start_requested_contract(void)
         return;
     }
 
+    fallbackRequest = 0;
     pdControl_g.cc_SetPDONum = selected + 1;
     pdControl_g.cc_USBPD_READY = 0;
     apiStatus = USBPD_STATUS_NEGOTIATING;
     negotiationWait = 0;
     requestPending = 0;
+    pdControl_g.cc_State = CC_SEND_REQUEST;
+}
+
+/*
+ * A source expects a Request soon after its capabilities, and sends a Hard Reset
+ * (which drops VBUS) when none comes. With nothing else to request, ask for the
+ * first option, which is always the fixed 5 V one. apiStatus stays as it is, so
+ * the application still sees why its request was not met.
+ */
+static void usbpd_request_fallback_contract(void)
+{
+    if (!sourceCapabilityCount || !sourceCapabilities[0].available ||
+        sourceCapabilities[0].programmable)
+        return;
+
+    fallbackRequest = 1;
+    pdControl_g.cc_SetPDONum = 1;
+    pdControl_g.cc_USBPD_READY = 0;
+    negotiationWait = 0;
     pdControl_g.cc_State = CC_SEND_REQUEST;
 }
 
@@ -361,6 +382,7 @@ void usbpd_sink_reset(void)
     pdControl_g.cc_USBPD_READY = 0;
     pdControl_g.cc_SetPDONum = 1;
     pdControl_g.cc_LastSetPDONum = 1;
+    fallbackRequest = 0;
     negotiationWait = 0;
 }
 
@@ -413,6 +435,7 @@ void usbpd_sink_end(void)
     apiManaged = 0;
     requestPending = 0;
     requestConfigured = 0;
+    fallbackRequest = 0;
     requestByVoltage = 0;
     requestedCapability = 0;
     requestedVoltage = 0;
@@ -496,6 +519,13 @@ void usbpd_sink_fixed_pdo_request(FixedSourceCap_t* sourceCap, uint8_t pdoNum, p
     uint16_t current = usbpd_request_current_for(&sourceCapabilities[pdoNum - 1]) / 10;
     if (current > sourceCap[pdoNum-1].Current / 10)
         current = sourceCap[pdoNum-1].Current / 10;
+    if (fallbackRequest)
+    {
+        // Without a current from the application, take what the option offers.
+        if (current == 0)
+            current = sourceCap[pdoNum-1].Current / 10;
+        sinkFixedRDO.SinkFixedVariableRDO.CapabilityMismatch = requestConfigured;
+    }
     sinkFixedRDO.SinkFixedVariableRDO.MaxOperatingCurrent10mAunits = current;
     sinkFixedRDO.SinkFixedVariableRDO.OperatingCurrentIn10mAunits = current;
     sinkFixedRDO.SinkFixedVariableRDO.ObjectPosition = pdoNum;
@@ -591,6 +621,8 @@ void usbpd_sink_process(void)
                     requestPending = 1;
                 }
                 usbpd_start_requested_contract();
+                if (pdControl_g.cc_State == CC_HAVE_CAPABILITIES)
+                    usbpd_request_fallback_contract();
             }
             break;
         }
@@ -637,6 +669,12 @@ void usbpd_sink_process(void)
             if(pdControl_g.cc_SinkGoodCRCOver)
             {
                 pdControl_g.cc_SinkGoodCRCOver = 0;
+                if (fallbackRequest)
+                {
+                    // 5 V is not what was asked for: not READY.
+                    pdControl_g.cc_State = CC_ACTIVE;
+                    break;
+                }
                 uint8_t index = pdControl_g.cc_SetPDONum - 1;
                 negotiatedVoltage = sourceCapabilities[index].programmable ?
                                     requestedVoltage :

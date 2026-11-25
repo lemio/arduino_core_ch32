@@ -28,6 +28,11 @@ amperes. A `true` return means the arguments were accepted, not that power is
 available. Use `getStatus()` and `isReady()` to monitor negotiation. The
 driver retries the last request when new source capabilities arrive.
 
+A source expects an answer to its capabilities and resets the port (dropping
+VBUS) without one. When no request can be met, or none has been made yet, the
+driver therefore asks for the first option (5 V). `isReady()` stays `false` and
+`getStatus()` keeps reporting why, or `USBPD_IDLE` without a request.
+
 `begin()` starts the driver without requesting power. `hasCapabilities()`,
 `getCapabilityCount()` and `getCapability()` enumerate the source's advertised
 options; indices are zero-based. `requestCapability()` requests a specific

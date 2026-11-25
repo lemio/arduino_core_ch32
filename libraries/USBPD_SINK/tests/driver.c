@@ -24,6 +24,26 @@ static void receive_capabilities(unsigned revision, unsigned count)
     usbpd_sink_process();
 }
 
+static USBPD_SINKRDO_t sent_request(void)
+{
+    USBPD_SINKRDO_t rdo;
+    usbpd_sink_process();
+    rdo.d32 = (uint32_t)usbpdTxBuffer[2] | ((uint32_t)usbpdTxBuffer[3] << 8) |
+              ((uint32_t)usbpdTxBuffer[4] << 16) | ((uint32_t)usbpdTxBuffer[5] << 24);
+    return rdo;
+}
+
+static void finish_fallback_contract(USBPD_Status_t expected)
+{
+    pdControl_g.cc_State = CC_PS_RDY;
+    pdControl_g.cc_SinkGoodCRCOver = 1;
+    usbpd_sink_process();
+    assert(pdControl_g.cc_State == CC_ACTIVE);
+    assert(usbpd_api_get_status() == expected);
+    assert(!usbpd_api_is_ready());
+    assert(usbpd_api_get_voltage() == 0);
+}
+
 static void ready_contract(void)
 {
     pdControl_g.cc_State = CC_PS_RDY;
@@ -86,8 +106,18 @@ int main(void)
     receive_capabilities(DEF_PD_REVISION_20, 2);
     assert(usbpd_api_get_status() == USBPD_STATUS_VOLTAGE_UNAVAILABLE);
 
+    /* An unavailable voltage still gets a Request: 5 V, flagged as a mismatch. */
+    assert(pdControl_g.cc_State == CC_SEND_REQUEST);
+    USBPD_SINKRDO_t fallback = sent_request();
+    assert(fallback.SinkFixedVariableRDO.ObjectPosition == 1);
+    assert(fallback.SinkFixedVariableRDO.CapabilityMismatch == 1);
+    assert(fallback.SinkFixedVariableRDO.OperatingCurrentIn10mAunits == 100);
+    finish_fallback_contract(USBPD_STATUS_VOLTAGE_UNAVAILABLE);
+
     receive_capabilities(DEF_PD_REVISION_30, 1);
     assert(usbpd_api_get_status() == USBPD_STATUS_VOLTAGE_UNAVAILABLE);
+    assert(sent_request().SinkFixedVariableRDO.ObjectPosition == 1);
+    finish_fallback_contract(USBPD_STATUS_VOLTAGE_UNAVAILABLE);
     receive_capabilities(DEF_PD_REVISION_30, 2);
     assert(pdControl_g.cc_State == CC_SEND_REQUEST);
     assert(pdControl_g.cc_SetPDONum == 2);
@@ -111,5 +141,35 @@ int main(void)
     assert(pdControl_g.cc_SetPDONum == 2);
     assert(requestedCapability == 1);
     assert(requestedVoltage == 9000);
+
+    /* Too much current: same fallback, with the current limited to the offer. */
+    usbpd_sink_end();
+    usbpd_api_begin();
+    usbpd_sink_reset();
+    assert(usbpd_api_request_voltage(5, 5000));
+    receive_capabilities(DEF_PD_REVISION_30, 1);
+    fallback = sent_request();
+    assert(fallback.SinkFixedVariableRDO.CapabilityMismatch == 1);
+    assert(fallback.SinkFixedVariableRDO.OperatingCurrentIn10mAunits == 300);
+    finish_fallback_contract(USBPD_STATUS_CURRENT_UNAVAILABLE);
+
+    /* begin() without a request (listing capabilities) answers the source too. */
+    usbpd_sink_end();
+    usbpd_api_begin();
+    usbpd_sink_reset();
+    receive_capabilities(DEF_PD_REVISION_30, 2);
+    assert(usbpd_api_has_capabilities());
+    fallback = sent_request();
+    assert(fallback.SinkFixedVariableRDO.ObjectPosition == 1);
+    assert(fallback.SinkFixedVariableRDO.CapabilityMismatch == 0);
+    assert(fallback.SinkFixedVariableRDO.OperatingCurrentIn10mAunits == 300);
+    finish_fallback_contract(USBPD_STATUS_IDLE);
+
+    /* A request that can be met afterwards replaces the fallback. */
+    assert(usbpd_api_request_voltage(5, 1000));
+    fallback = sent_request();
+    assert(fallback.SinkFixedVariableRDO.CapabilityMismatch == 0);
+    ready_contract();
+    assert(usbpd_api_get_voltage() == 5000);
     return 0;
 }
