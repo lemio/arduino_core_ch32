@@ -75,6 +75,13 @@ public:
     /** Request a listed option by its zero-based index and minimum current. */
     bool requestCapability(uint8_t index, float current);
 
+    /**
+     * Request a voltage from a programmable (PPS) option by its zero-based
+     * index. The voltage is rounded down to 20 mV. May be called again while
+     * active to move the voltage. Returns false only for invalid values.
+     */
+    bool requestProgrammableVoltage(uint8_t index, float voltage, float current);
+
     /** Return true after the source has activated the requested power. */
     bool isReady();
 

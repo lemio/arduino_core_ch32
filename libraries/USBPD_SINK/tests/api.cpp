@@ -33,6 +33,7 @@ bool usbpd_api_request_voltage(uint16_t voltage, uint16_t current)
     return true;
 }
 bool usbpd_api_request_capability(uint8_t, uint16_t) { return true; }
+bool usbpd_api_request_programmable(uint8_t, uint16_t, uint16_t) { return true; }
 bool usbpd_api_is_ready() { return false; }
 USBPD_Status_t usbpd_api_get_status() { return USBPD_STATUS_IDLE; }
 uint16_t usbpd_api_get_voltage() { return 0; }

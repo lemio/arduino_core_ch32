@@ -36,6 +36,7 @@ static volatile uint8_t fallbackRequest; // the request in flight is the 5 V fal
 static volatile uint8_t requestByVoltage;
 static volatile uint8_t requestedCapability;
 static volatile uint16_t requestedVoltage;
+static volatile uint16_t requestedProgrammableVoltage; /* mV, 0 = none */
 static volatile uint16_t requestedCurrent;
 static volatile uint16_t negotiatedVoltage;
 static volatile uint16_t negotiatedCurrent;
@@ -91,13 +92,17 @@ static void usbpd_start_requested_contract(void)
               pdControl_g.cc_PD_Version >= DEF_PD_REVISION_30))
     {
         USBPD_Capability_t *cap = &sourceCapabilities[requestedCapability];
-        voltageMatch = 1;
-        if (usbpd_request_current_for(cap) <= cap->current)
+        if (!cap->programmable || !requestedProgrammableVoltage ||
+            (requestedProgrammableVoltage >= cap->minVoltage &&
+             requestedProgrammableVoltage <= cap->maxVoltage))
+            voltageMatch = 1;
+        if (voltageMatch && usbpd_request_current_for(cap) <= cap->current)
         {
             currentMatch = 1;
             selected = requestedCapability;
             if (cap->programmable)
-                requestedVoltage = cap->minVoltage;
+                requestedVoltage = requestedProgrammableVoltage ?
+                                   requestedProgrammableVoltage : cap->minVoltage;
             else
                 requestedVoltage = cap->maxVoltage;
         }
@@ -185,6 +190,7 @@ bool usbpd_api_request_voltage(uint16_t voltage, uint16_t current)
     if (voltage < 5 || voltage > 21 || current == 0)
         return false;
 
+    requestedProgrammableVoltage = 0;
     requestedVoltage = voltage * 1000u;
     requestedCurrent = current;
     requestByVoltage = 1;
@@ -203,6 +209,25 @@ bool usbpd_api_request_capability(uint8_t index, uint16_t current)
     if (sourceCapabilitiesReady && index >= sourceCapabilityCount)
         return false;
 
+    requestedProgrammableVoltage = 0;
+    requestedCapability = index;
+    requestedCurrent = current;
+    requestByVoltage = 0;
+    requestPending = 1;
+    requestConfigured = 1;
+    apiStatus = USBPD_STATUS_NEGOTIATING;
+    pdControl_g.cc_USBPD_READY = 0;
+    usbpd_start_requested_contract();
+    return true;
+}
+
+bool usbpd_api_request_programmable(uint8_t index, uint16_t millivolts, uint16_t current)
+{
+    if (index >= USBPD_MAX_SOURCE_CAPABILITIES || millivolts == 0 || current == 0)
+        return false;
+
+    /* The RDO has 20 mV resolution. */
+    requestedProgrammableVoltage = (millivolts / 20u) * 20u;
     requestedCapability = index;
     requestedCurrent = current;
     requestByVoltage = 0;
@@ -304,6 +329,7 @@ bool usbpd_sink_set_request_fixed_voltage(Request_voltage_t requestVoltage)
                 apiStatus == USBPD_STATUS_READY)
                 return true;
             pdControl_g.cc_SetPDONum = i+1;
+            requestedProgrammableVoltage = 0;
             requestedCapability = i;
             requestedCurrent = pdControl_g.cc_FixedSourceCap[i].Current;
             requestedVoltage = targetVoltage;
@@ -439,6 +465,7 @@ void usbpd_sink_end(void)
     requestByVoltage = 0;
     requestedCapability = 0;
     requestedVoltage = 0;
+    requestedProgrammableVoltage = 0;
     requestedCurrent = 0;
     negotiatedVoltage = 0;
     negotiatedCurrent = 0;
@@ -701,9 +728,9 @@ void usbpd_sink_process(void)
             if (sourceCapabilities[index].programmable &&
                 ++ppsRefreshWait >= USBPD_PPS_REFRESH_TICKS)
             {
+                /* PPS keep-alive: re-send the same request quietly. The contract
+                 * stays established, so keep reporting READY meanwhile. */
                 ppsRefreshWait = 0;
-                pdControl_g.cc_USBPD_READY = 0;
-                apiStatus = USBPD_STATUS_NEGOTIATING;
                 negotiationWait = 0;
                 pdControl_g.cc_State = CC_SEND_REQUEST;
             }

@@ -31,6 +31,7 @@ begin KEYWORD2
 end KEYWORD2
 requestVoltage KEYWORD2
 requestCapability KEYWORD2
+requestProgrammableVoltage KEYWORD2
 isReady KEYWORD2
 getStatus KEYWORD2
 getVoltage KEYWORD2

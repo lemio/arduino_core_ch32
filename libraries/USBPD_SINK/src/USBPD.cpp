@@ -56,6 +56,15 @@ bool USBPDClass::requestCapability(uint8_t index, float current)
     return usbpd_api_request_capability(index, (uint16_t)(current * 1000.0f));
 }
 
+bool USBPDClass::requestProgrammableVoltage(uint8_t index, float voltage, float current)
+{
+    begin();
+    if (!(voltage > 0.0f) || voltage > 65.0f || !(current > 0.0f) || current > 10.23f)
+        return false;
+    return usbpd_api_request_programmable(index, (uint16_t)(voltage * 1000.0f + 0.5f),
+                                          (uint16_t)(current * 1000.0f + 0.5f));
+}
+
 bool USBPDClass::isReady()
 {
     return usbpd_api_is_ready();

@@ -72,7 +72,8 @@ int main(void)
     assert(usbpd_api_is_ready());
     usbpd_sink_process();
     assert(pdControl_g.cc_State == CC_SEND_REQUEST);
-    assert(usbpd_api_get_status() == USBPD_STATUS_NEGOTIATING);
+    /* The PPS keep-alive does not drop the established contract. */
+    assert(usbpd_api_is_ready());
     usbpd_sink_process();
     USBPD_SINKRDO_t rdo;
     rdo.d32 = (uint32_t)usbpdTxBuffer[2] | ((uint32_t)usbpdTxBuffer[3] << 8) |
@@ -152,6 +153,25 @@ int main(void)
     assert(fallback.SinkFixedVariableRDO.CapabilityMismatch == 1);
     assert(fallback.SinkFixedVariableRDO.OperatingCurrentIn10mAunits == 300);
     finish_fallback_contract(USBPD_STATUS_CURRENT_UNAVAILABLE);
+
+    /* A chosen PPS voltage, rounded down to 20 mV. */
+    usbpd_sink_end();
+    usbpd_api_begin();
+    usbpd_sink_reset();
+    assert(usbpd_api_request_programmable(1, 9010, 1000));
+    receive_capabilities(DEF_PD_REVISION_30, 2);
+    assert(sent_request().SinkPPSRDO.OutputVoltagein20mVunits == 450);
+    ready_contract();
+    assert(usbpd_api_get_voltage() == 9000);
+
+    /* Outside the option's range: unavailable, and the 5 V fallback. */
+    usbpd_sink_end();
+    usbpd_api_begin();
+    usbpd_sink_reset();
+    assert(usbpd_api_request_programmable(1, 21000, 1000));
+    receive_capabilities(DEF_PD_REVISION_30, 2);
+    assert(sent_request().SinkFixedVariableRDO.ObjectPosition == 1);
+    finish_fallback_contract(USBPD_STATUS_VOLTAGE_UNAVAILABLE);
 
     /* begin() without a request (listing capabilities) answers the source too. */
     usbpd_sink_end();

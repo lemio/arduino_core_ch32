@@ -138,6 +138,16 @@ an option, and use `getCapability()` to inspect it.
 The method returns `true` when the request is accepted, not when the source has
 granted it. Check `getStatus()` or `isReady()` for the negotiation result.
 
+### `USBPD.requestProgrammableVoltage(index, voltage, current)`
+
+Requests a voltage in volts from the programmable (PPS) option at a zero-based
+index, with a minimum current in amperes. The voltage is rounded down to 20 mV.
+It may be called again while active to move the voltage. A voltage outside the
+option's range results in `USBPD_VOLTAGE_UNAVAILABLE`.
+
+The method returns `false` only for invalid values. Check `getStatus()` or
+`isReady()` for the negotiation result.
+
 ### `USBPD.isReady()`
 
 Returns `true` when the driver reports that the requested power contract is

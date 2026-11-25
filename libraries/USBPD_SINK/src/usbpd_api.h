@@ -33,6 +33,7 @@ typedef struct
 void usbpd_api_begin(void);
 bool usbpd_api_request_voltage(uint16_t voltage, uint16_t current);
 bool usbpd_api_request_capability(uint8_t index, uint16_t current);
+bool usbpd_api_request_programmable(uint8_t index, uint16_t millivolts, uint16_t current);
 bool usbpd_api_is_ready(void);
 USBPD_Status_t usbpd_api_get_status(void);
 uint16_t usbpd_api_get_voltage(void);
