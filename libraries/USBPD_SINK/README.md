@@ -93,7 +93,9 @@ void loop() {
 
 Complete sketches are in the [examples directory](examples/):
 [SimplePowerDelivery](examples/SimplePowerDelivery/SimplePowerDelivery.ino),
-[ListPowerDelivery](examples/ListPowerDelivery/ListPowerDelivery.ino), and
+[ListPowerDelivery](examples/ListPowerDelivery/ListPowerDelivery.ino),
+[AdvancedPowerDeliveryDisplay](examples/AdvancedPowerDeliveryDisplay/AdvancedPowerDeliveryDisplay.ino)
+(needs the U8g2 library and an SSD1306 OLED), and
 [usbpd_sink_request_voltage](examples/usbpd_sink_request_voltage/usbpd_sink_request_voltage.ino).
 
 ---
@@ -138,7 +140,7 @@ an option, and use `getCapability()` to inspect it.
 The method returns `true` when the request is accepted, not when the source has
 granted it. Check `getStatus()` or `isReady()` for the negotiation result.
 
-### `USBPD.requestProgrammableVoltage(index, voltage, current)`
+### `USBPD.requestProgrammableVoltage(index, voltage, current)` [[_example_]](examples/AdvancedPowerDeliveryDisplay/AdvancedPowerDeliveryDisplay.ino)
 
 Requests a voltage in volts from the programmable (PPS) option at a zero-based
 index, with a minimum current in amperes. The voltage is rounded down to 20 mV.
